@@ -14,6 +14,7 @@ startButton.addEventListener("click", async (e) => {
     audio: true
   });
 
+  startButton.disabled = true;
 
   recordLoop(stream);
   writeInfo("Starting");
@@ -21,7 +22,6 @@ startButton.addEventListener("click", async (e) => {
 });
 
 let context = new AudioContext();
-
 
 async function recordLoop(stream) {
 

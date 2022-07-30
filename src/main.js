@@ -21,7 +21,23 @@ startButton.addEventListener("click", async (e) => {
 
 });
 
-let context = new AudioContext();
+const context = new AudioContext();
+
+const compressor = context.createDynamicsCompressor();
+compressor.threshold.setValueAtTime(-50, context.currentTime);
+compressor.knee.setValueAtTime(40, context.currentTime);
+compressor.ratio.setValueAtTime(12, context.currentTime);
+compressor.attack.setValueAtTime(0, context.currentTime);
+compressor.release.setValueAtTime(0.25, context.currentTime);
+
+const biquadFilter = context.createBiquadFilter();
+biquadFilter.type = "lowshelf";
+biquadFilter.frequency.setValueAtTime(2000, context.currentTime);
+biquadFilter.gain.setValueAtTime(25, context.currentTime);
+
+const audioDest = biquadFilter;
+biquadFilter.connect(compressor);
+compressor.connect(context.destination);
 
 async function recordLoop(stream) {
 
@@ -77,7 +93,7 @@ async function recordSound(stream, length) {
 
 async function playSound(audioBuffer) {
   const source = context.createBufferSource();
-  source.connect(context.destination);
+  source.connect(audioDest);
   source.buffer = audioBuffer;
   source.start(context.currentTime);
 }

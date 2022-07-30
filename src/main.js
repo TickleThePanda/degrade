@@ -14,86 +14,56 @@ startButton.addEventListener("click", async (e) => {
     audio: true
   });
 
+  const tracks = stream.getAudioTracks();
+
+  for (let track of tracks) {
+    track.applyConstraints({
+      echoCancellation: false,
+      noiseSuppression: false,
+      autoGainControl: false
+    });
+  }
+
   startButton.disabled = true;
 
-  recordLoop(stream);
+  const context = new AudioContext();
+
+  const userMedia = context.createMediaStreamSource(stream);
+
+  const delays = [
+    createDelay(context, 3),
+    createDelay(context, 7)
+  ];
+
+  const compressor = context.createDynamicsCompressor();
+  compressor.threshold.setValueAtTime(-30, context.currentTime);
+  compressor.knee.setValueAtTime(40, context.currentTime);
+  compressor.ratio.setValueAtTime(12, context.currentTime);
+  compressor.attack.setValueAtTime(0, context.currentTime);
+  compressor.release.setValueAtTime(0.25, context.currentTime);
+
+  const biquadFilter = context.createBiquadFilter();
+  biquadFilter.type = "lowpass";
+  biquadFilter.frequency.setValueAtTime(1500, context.currentTime);
+  biquadFilter.Q.setValueAtTime(1, context.currentTime);
+
+  const gain = context.createGain(0.8);
+  gain.gain.setValueAtTime(0.8, context.currentTime);
+
+  for (const delay of delays) {
+    userMedia.connect(delay);
+    delay.connect(biquadFilter);
+  }
+  biquadFilter.connect(gain);
+  gain.connect(compressor);
+  compressor.connect(context.destination);
+
   writeInfo("Starting");
 
 });
 
-const context = new AudioContext();
-
-const compressor = context.createDynamicsCompressor();
-compressor.threshold.setValueAtTime(-50, context.currentTime);
-compressor.knee.setValueAtTime(40, context.currentTime);
-compressor.ratio.setValueAtTime(12, context.currentTime);
-compressor.attack.setValueAtTime(0, context.currentTime);
-compressor.release.setValueAtTime(0.25, context.currentTime);
-
-const biquadFilter = context.createBiquadFilter();
-biquadFilter.type = "lowshelf";
-biquadFilter.frequency.setValueAtTime(2000, context.currentTime);
-biquadFilter.gain.setValueAtTime(25, context.currentTime);
-
-const audioDest = biquadFilter;
-biquadFilter.connect(compressor);
-compressor.connect(context.destination);
-
-async function recordLoop(stream) {
-
-  let lastRecording = undefined;
-  let loopNumber = 0;
-
-  while (true) {
-    writeInfo(`Recording ${loopNumber++}`);
-    const [recording] = await Promise.all([recordSound(stream, 3000), playSound(lastRecording)]);
-    lastRecording = await convertRecordingToSound(recording);
-  }
-
-}
-
-async function convertRecordingToSound(recording) {
-  return new Promise(async (resolve) => {
-
-    const recordingAsArrayBuffer = await recording.arrayBuffer();
-    context.decodeAudioData(recordingAsArrayBuffer, b => {
-      resolve(b);
-    });
-
-  })
-
-}
-
-async function recordSound(stream, length) {
-
-  const chunks = [];
-
-  const mediaRecorder = new MediaRecorder(stream);
-
-  return new Promise(async (resolve) => {
-
-    mediaRecorder.addEventListener("dataavailable", e => {
-      chunks.push(e.data);
-    });
-
-    mediaRecorder.addEventListener("stop", e => {
-      resolve(new Blob(chunks, {
-        'type': 'audio/wav'
-      }));
-    });
-
-    setTimeout(() => {
-      mediaRecorder.requestData();
-      mediaRecorder.stop();
-    }, length);
-
-    mediaRecorder.start();
-  });
-}
-
-async function playSound(audioBuffer) {
-  const source = context.createBufferSource();
-  source.connect(audioDest);
-  source.buffer = audioBuffer;
-  source.start(context.currentTime);
+function createDelay(context, time) {
+  const delay = context.createDelay(time);
+  delay.delayTime.setValueAtTime(time, context.currentTime);
+  return delay;
 }

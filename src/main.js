@@ -1,17 +1,22 @@
-
 const startButton = document.querySelector("#start");
+const stopButton = document.querySelector("#stop");
 const statusDiv = document.querySelector("#status");
 
 function writeInfo(info) {
-
   statusDiv.innerHTML += "<p>" + info;
 }
+
+function clearInfo() {
+  statusDiv.innerHTML = "";
+}
+
+let context;
 
 startButton.addEventListener("click", async (e) => {
   e.preventDefault();
 
   const stream = await navigator.mediaDevices.getUserMedia({
-    audio: true
+    audio: true,
   });
 
   const tracks = stream.getAudioTracks();
@@ -19,47 +24,57 @@ startButton.addEventListener("click", async (e) => {
   for (let track of tracks) {
     track.applyConstraints({
       echoCancellation: false,
-      noiseSuppression: false,
-      autoGainControl: false
+      noiseSuppression: true,
+      autoGainControl: true,
     });
   }
 
   startButton.disabled = true;
+  stopButton.disabled = false;
 
-  const context = new AudioContext();
+  context = new AudioContext();
 
   const userMedia = context.createMediaStreamSource(stream);
 
-  const delays = [
-    createDelay(context, 3),
-    createDelay(context, 7)
-  ];
+  const delays = [createDelay(context, 3)];
 
-  const compressor = context.createDynamicsCompressor();
-  compressor.threshold.setValueAtTime(-30, context.currentTime);
-  compressor.knee.setValueAtTime(40, context.currentTime);
-  compressor.ratio.setValueAtTime(12, context.currentTime);
-  compressor.attack.setValueAtTime(0, context.currentTime);
-  compressor.release.setValueAtTime(0.25, context.currentTime);
+  const analyser = context.createAnalyser();
+  analyser.smoothingTimeConstant = 0.8;
 
-  const biquadFilter = context.createBiquadFilter();
-  biquadFilter.type = "lowpass";
-  biquadFilter.frequency.setValueAtTime(1500, context.currentTime);
-  biquadFilter.Q.setValueAtTime(1, context.currentTime);
+  userMedia.connect(analyser);
 
-  const gain = context.createGain(0.8);
-  gain.gain.setValueAtTime(0.8, context.currentTime);
+  const gain = context.createGain();
+  gain.gain.value = 0.5;
 
   for (const delay of delays) {
     userMedia.connect(delay);
-    delay.connect(biquadFilter);
+    delay.connect(gain);
   }
-  biquadFilter.connect(gain);
-  gain.connect(compressor);
-  compressor.connect(context.destination);
+
+  const filter = context.createBiquadFilter();
+  filter.type = "lowpass";
+  filter.frequency.value = 2000;
+
+  gain.connect(filter);
+
+  filter.connect(context.destination);
+
+  //manageVolume();
 
   writeInfo("Starting");
+});
 
+stopButton.addEventListener("click", async (e) => {
+  e.preventDefault();
+
+  if (context) {
+    context.close();
+  }
+
+  startButton.disabled = false;
+  stopButton.disabled = true;
+
+  clearInfo();
 });
 
 function createDelay(context, time) {
